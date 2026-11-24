@@ -28,4 +28,5 @@ public sealed class InstallAnalysis
     public Dictionary<string, string> DllStatusDetails { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool HasConfigJson { get; set; }
     public int LogFileCount { get; set; }
+    public GameOptimizationSettings Optimization { get; set; } = new();
 }

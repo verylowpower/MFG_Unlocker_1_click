@@ -44,6 +44,26 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="GpuPillBorder"
+                            Background="{StaticResource BgCardBrush}"
+                            BorderBrush="{StaticResource BorderSubtleBrush}"
+                            BorderThickness="1"
+                            Padding="10,4"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Name="GpuStatusText"
+                                   Text="Detecting GPU..."
+                                   FontSize="12"
+                                   FontWeight="SemiBold" />
+                    </Border>
+
+                    <Button x:Name="EnableHagsButton"
+                            Content="Enable HAGS"
+                            Style="{StaticResource BaseButtonStyle}"
+                            Visibility="Collapsed"
+                            Click="EnableHagsButton_Click"
+                            Margin="0,0,8,0" />
+
                     <Border x:Name="ReleasePillBorder"
                             Background="{StaticResource BgCardBrush}"
                             BorderBrush="{StaticResource BorderSubtleBrush}"
@@ -499,12 +519,71 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- RTX 20xx / 30xx Optimization GroupBox -->
+                        <GroupBox Header="RTX 20xx / 30xx Optimization (RTX40MFG-UI.ini)"
+                                  Margin="0,0,0,10">
+                            <StackPanel>
+                                <Border x:Name="Rtx2030InfoBanner"
+                                        Background="#142338"
+                                        BorderBrush="#2B4C7E"
+                                        BorderThickness="1"
+                                        Padding="10,7"
+                                        Margin="0,0,0,10">
+                                    <TextBlock x:Name="Rtx2030InfoText"
+                                               Foreground="#93C5FD"
+                                               TextWrapping="Wrap"
+                                               FontSize="12"
+                                               Text="Configure compatibility &amp; frame-pacing options in RTX40MFG-UI.ini beside the game .exe." />
+                                </Border>
+
+                                <CheckBox x:Name="UnlockGameFgCheckBox"
+                                          Content="Unlock hidden in-game Frame Generation toggle (GpuNameOverride=1)"
+                                          Margin="0,0,0,4" />
+                                <TextBlock Text="Reports RTX 4090 to the game's UI check so titles that hide DLSS Frame Generation on RTX 20xx/30xx (e.g. Wuthering Waves) show the toggle. DLSS/driver still use your real GPU."
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5"
+                                           TextWrapping="Wrap"
+                                           Margin="22,0,0,10" />
+
+                                <CheckBox x:Name="LegacyRtx30PacingCheckBox"
+                                          Content="Use legacy V1.5.0 CPU frame pacing instead of driver flip metering (Rtx30FlipMetering=0)"
+                                          Margin="0,0,0,4" />
+                                <TextBlock Text="Keep unchecked for default driver flip metering (recommended). Enable only if an RTX 30xx card experiences stutter or pacing issues."
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5"
+                                           TextWrapping="Wrap"
+                                           Margin="22,0,0,10" />
+
+                                <CheckBox x:Name="AutoApplyOptOnInstallCheckBox"
+                                          Content="Automatically write RTX40MFG-UI.ini on 1-Click Install"
+                                          IsChecked="True"
+                                          Margin="0,0,0,10" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="ApplyRecommendedOptButton"
+                                            Content="Apply Recommended (20xx/30xx)"
+                                            Style="{StaticResource PrimaryBlueButton}"
+                                            Click="ApplyRecommendedOptButton_Click"
+                                            Margin="0,0,8,0" />
+                                    <Button x:Name="SaveOptimizationButton"
+                                            Content="Save INI Settings"
+                                            Style="{StaticResource BaseButtonStyle}"
+                                            Click="SaveOptimizationButton_Click" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="OptimizationStatusText"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11.5"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Quick Guide GroupBox -->
                         <GroupBox Header="Quick Usage Guide">
                             <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
                                        TextWrapping="Wrap"
                                        LineHeight="19"
-                                       Text="1. Launch the game normally.&#x0a;2. Enable Frame Generation in the game's graphics settings.&#x0a;3. Press Backspace in game to open the MFG Unlocker menu (opens automatically on first launch).&#x0a;4. If the menu does not appear and no RTXMFG-*.log is created beside the .exe, uninstall and choose an alternative DLL filename." />
+                                       Text="1. Launch the game normally.&#x0a;2. Enable Frame Generation in the game's graphics settings.&#x0a;3. Press Backspace in game to open the MFG Unlocker menu (opens automatically on first launch).&#x0a;4. If the menu does not appear and no RTXMFG-*.log is created beside the .exe, uninstall and choose an alternative DLL filename.&#x0a;5. RTX 20xx / 30xx tip: In the Backspace menu, set DLSS-G preset to Preset C (performance), keep multiplier at 2x–3x for lower latency, and ensure Windows HAGS is enabled." />
                         </GroupBox>
                     </StackPanel>
                 </Grid>

@@ -67,6 +67,7 @@ public sealed class InstallAnalyzerService
         }
 
         analysis.HasConfigJson = File.Exists(Path.Combine(game.TargetDirectory, "RTXMFG-Universal.json"));
+        analysis.Optimization = OptimizationService.Load(game.TargetDirectory);
         try
         {
             analysis.LogFileCount = Directory.EnumerateFiles(game.TargetDirectory, "RTXMFG-*.log").Count();

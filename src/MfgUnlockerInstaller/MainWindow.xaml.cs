@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<GameEntry> _filteredGames = [];
     private ReleaseInfo? _currentRelease;
     private GameEntry? _selectedGame;
+    private GpuInfo _gpuInfo = new();
     private bool _isBusy;
     private bool _isUpdatingDllList;
 
@@ -53,6 +54,9 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         WindowThemeHelper.EnableDarkTitleBar(this);
+
+        _gpuInfo = GpuDetectionService.DetectPrimaryGpu();
+        UpdateGpuPill();
 
         _currentRelease = _releaseService.GetCachedRelease();
         UpdateReleasePill();
@@ -295,8 +299,51 @@ public partial class MainWindow : Window
         RecommendationReasonText.Text = analysis.RecommendationReason;
 
         PopulateDllComboBox(analysis);
+        RenderOptimizationSection(analysis);
         UpdateActionButtons(analysis);
     }
+
+    private void RenderOptimizationSection(InstallAnalysis analysis)
+    {
+        GameOptimizationSettings opt = analysis.Optimization;
+        if (opt.IniExists)
+        {
+            UnlockGameFgCheckBox.IsChecked = opt.UnlockHiddenGameFgOption;
+            LegacyRtx30PacingCheckBox.IsChecked = opt.UseLegacyRtx30Pacing;
+            OptimizationStatusText.Text =
+                $"RTX40MFG-UI.ini: Present • GpuNameOverride={(opt.UnlockHiddenGameFgOption ? 1 : 0)} • Rtx30FlipMetering={(opt.UseLegacyRtx30Pacing ? 0 : 1)}";
+        }
+        else
+        {
+            UnlockGameFgCheckBox.IsChecked = _gpuInfo.IsRtx20Or30;
+            LegacyRtx30PacingCheckBox.IsChecked = false;
+            OptimizationStatusText.Text =
+                "RTX40MFG-UI.ini: Not present (will be created when saved or on 1-Click Install if auto-apply is checked).";
+        }
+
+        AutoApplyOptOnInstallCheckBox.IsChecked = _gpuInfo.IsRtx20Or30 || opt.IniExists;
+
+        if (_gpuInfo.IsRtx20Or30)
+        {
+            Rtx2030InfoText.Text =
+                $"Detected {_gpuInfo.Name} ({_gpuInfo.ArchitectureLabel}). " +
+                (_gpuInfo.IsHagsEnabled
+                    ? "HAGS is enabled. Recommended: unlock hidden in-game FG toggle (GpuNameOverride=1) and keep driver flip metering on."
+                    : "WARNING: Windows HAGS is disabled! DLSS Frame Generation on RTX 20xx/30xx requires HAGS — click 'Enable HAGS' in the top bar and reboot.");
+        }
+        else
+        {
+            Rtx2030InfoText.Text =
+                $"Detected {_gpuInfo.Name} ({_gpuInfo.ArchitectureLabel}). " +
+                "These compatibility options in RTX40MFG-UI.ini are primarily for RTX 20xx / 30xx GPUs.";
+        }
+    }
+
+    private GameOptimizationSettings ReadOptimizationFromUi() => new()
+    {
+        UnlockHiddenGameFgOption = UnlockGameFgCheckBox.IsChecked == true,
+        UseLegacyRtx30Pacing = LegacyRtx30PacingCheckBox.IsChecked == true
+    };
 
     private void PopulateDllComboBox(InstallAnalysis analysis)
     {
@@ -460,15 +507,25 @@ public partial class MainWindow : Window
             SetStatus($"Installing {dllItem.DllName} for {_selectedGame.Name}...");
             InstalledManifestEntry result = await _installerService.InstallAsync(_selectedGame, dllItem.DllName, _currentRelease!);
 
+            bool savedOptimization = false;
+            if (AutoApplyOptOnInstallCheckBox.IsChecked == true)
+            {
+                OptimizationService.Save(_selectedGame.TargetDirectory, ReadOptimizationFromUi());
+                savedOptimization = true;
+            }
+
             _selectedGame.Analysis = _analyzerService.Analyze(_selectedGame, _currentRelease);
             RenderSelectedGame(_selectedGame);
 
             SetStatus($"Installed {result.InstalledDllName} ({result.VersionTag}) for {_selectedGame.Name}.");
+            string optNote = savedOptimization
+                ? $"\n• RTX 20xx/30xx config: {OptimizationService.CompatibilityIniFileName} updated"
+                : string.Empty;
             MessageBox.Show(
                 this,
                 $"MFG Unlocker ({result.VersionTag}) installed successfully!\n\n" +
                 $"• DLL file: {result.InstalledDllName}\n" +
-                $"• Directory: {result.TargetDirectory}\n\n" +
+                $"• Directory: {result.TargetDirectory}{optNote}\n\n" +
                 "Launch the game, enable Frame Generation in settings, and press Backspace to open the menu.",
                 "Installation Complete",
                 MessageBoxButton.OK,
@@ -923,6 +980,110 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ApplyRecommendedOptButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedGame is null)
+        {
+            return;
+        }
+
+        GameOptimizationSettings recommended = GameOptimizationSettings.CreateRecommendedForRtx20Or30();
+        UnlockGameFgCheckBox.IsChecked = recommended.UnlockHiddenGameFgOption;
+        LegacyRtx30PacingCheckBox.IsChecked = recommended.UseLegacyRtx30Pacing;
+        SaveOptimizationSettingsForSelectedGame(recommended, "Applied recommended RTX 20xx/30xx settings");
+    }
+
+    private void SaveOptimizationButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedGame is null)
+        {
+            return;
+        }
+
+        SaveOptimizationSettingsForSelectedGame(ReadOptimizationFromUi(), "Saved RTX40MFG-UI.ini settings");
+    }
+
+    private void SaveOptimizationSettingsForSelectedGame(GameOptimizationSettings settings, string statusPrefix)
+    {
+        if (_selectedGame is null || string.IsNullOrWhiteSpace(_selectedGame.TargetDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            OptimizationService.Save(_selectedGame.TargetDirectory, settings);
+            _selectedGame.Analysis = _analyzerService.Analyze(_selectedGame, _currentRelease);
+            RenderSelectedGame(_selectedGame);
+            SetStatus($"{statusPrefix} for {_selectedGame.Name}.");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            HandleUnauthorizedAccess("write RTX40MFG-UI.ini to a protected game directory");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Failed to save optimization settings: {ex.Message}");
+            MessageBox.Show(this, ex.Message, "Save Optimization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void EnableHagsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GpuDetectionService.TryEnableHags(out string? error))
+        {
+            _gpuInfo = GpuDetectionService.DetectPrimaryGpu();
+            UpdateGpuPill();
+            if (_selectedGame?.Analysis is not null)
+            {
+                RenderOptimizationSection(_selectedGame.Analysis);
+            }
+
+            SetStatus("HAGS enabled in Windows Registry. Restart your PC for it to take effect.");
+            MessageBox.Show(
+                this,
+                "Hardware-Accelerated GPU Scheduling (HAGS) has been enabled.\n\nPlease restart Windows for the change to take effect.",
+                "HAGS Enabled",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        if (!AdminHelper.IsAdministrator())
+        {
+            HandleUnauthorizedAccess("enable Hardware-Accelerated GPU Scheduling (HAGS) in the Windows Registry");
+        }
+        else
+        {
+            MessageBox.Show(this, error ?? "Could not enable HAGS.", "HAGS Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void UpdateGpuPill()
+    {
+        string hagsText = _gpuInfo.IsHagsSupported
+            ? (_gpuInfo.IsHagsEnabled ? "HAGS On" : "HAGS Off")
+            : "HAGS N/A";
+
+        GpuStatusText.Text = $"{_gpuInfo.ArchitectureLabel} • {hagsText}";
+        GpuPillBorder.ToolTip = _gpuInfo.Name;
+
+        if (_gpuInfo.IsHagsSupported && !_gpuInfo.IsHagsEnabled)
+        {
+            GpuStatusText.Foreground = (Brush)FindResource("BadgeLegacyFg");
+            GpuPillBorder.Background = (Brush)FindResource("BadgeLegacyBg");
+            EnableHagsButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            GpuStatusText.Foreground = _gpuInfo.IsRtx20Or30
+                ? (Brush)FindResource("BadgeReadyFg")
+                : (Brush)FindResource("BadgeInstalledFg");
+            GpuPillBorder.Background = (Brush)FindResource("BgCardBrush");
+            EnableHagsButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
     private void UpdateReleasePill()
     {
         if (_currentRelease is null)
@@ -964,6 +1125,9 @@ public partial class MainWindow : Window
         CheckDownloadReleaseButton.IsEnabled = !busy;
         ImportLocalButton.IsEnabled = !busy;
         RescanButton.IsEnabled = !busy;
+        ApplyRecommendedOptButton.IsEnabled = !busy;
+        SaveOptimizationButton.IsEnabled = !busy;
+        EnableHagsButton.IsEnabled = !busy;
 
         MainProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         MainProgressBar.IsIndeterminate = indeterminate;

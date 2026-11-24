@@ -26,6 +26,8 @@ internal static class Program
             RunTest("ExeResolverService UE, Cyberpunk, Witcher 3", () => TestExeResolver(tempRoot));
             RunTest("InstallAnalyzerService conflict & avoid resolution", () => TestInstallAnalyzer(tempRoot));
             RunTest("InstallerService standard & Bink hook install/uninstall", () => TestInstallerEndToEnd(tempRoot));
+            RunTest("GpuDetectionService.ClassifyGpuName", TestGpuClassification);
+            RunTest("OptimizationService RTX 20xx/30xx INI read/write", () => TestOptimizationService(tempRoot));
         }
         finally
         {
@@ -346,5 +348,48 @@ internal static class Program
         installer.Uninstall(binkGame, binkAnalysis, deleteLogs: false);
         AssertTrue(!File.Exists(Path.Combine(binkGameDir, "bink2w64Hooked.dll")), "Backup Hooked DLL must be moved back");
         AssertTrue(File.ReadAllBytes(Path.Combine(binkGameDir, "bink2w64.dll")).SequenceEqual(originalBinkBytes), "Original bink2w64.dll must be restored byte-for-byte");
+    }
+
+    private static void TestGpuClassification()
+    {
+        AssertEqual(GpuDetectionService.ClassifyGpuName("NVIDIA GeForce RTX 2080 Ti"), GpuArchitecture.Rtx20Turing, "RTX 2080 Ti");
+        AssertEqual(GpuDetectionService.ClassifyGpuName("NVIDIA GeForce RTX 3070 Laptop GPU"), GpuArchitecture.Rtx30Ampere, "RTX 3070");
+        AssertEqual(GpuDetectionService.ClassifyGpuName("NVIDIA GeForce RTX 4090"), GpuArchitecture.Rtx40Ada, "RTX 4090");
+        AssertEqual(GpuDetectionService.ClassifyGpuName("NVIDIA GeForce RTX 5080"), GpuArchitecture.Rtx50Blackwell, "RTX 5080");
+        AssertEqual(GpuDetectionService.ClassifyGpuName("AMD Radeon RX 7900 XTX"), GpuArchitecture.NonNvidia, "AMD Radeon");
+        AssertEqual(GpuDetectionService.ClassifyGpuName("Intel(R) Arc(TM) A770 Graphics"), GpuArchitecture.NonNvidia, "Intel Arc");
+    }
+
+    private static void TestOptimizationService(string tempRoot)
+    {
+        string gameDir = Path.Combine(tempRoot, "OptGame");
+        Directory.CreateDirectory(gameDir);
+        string iniPath = OptimizationService.GetIniPath(gameDir);
+
+        // Pre-existing INI with an unrelated section that must be preserved
+        File.WriteAllText(iniPath, "[Menu]\nShowOverlay=1\n\n[Compatibility]\nOtherKey=keep\nGpuNameOverride=0\n");
+
+        GameOptimizationSettings loaded = OptimizationService.Load(gameDir);
+        AssertTrue(loaded.IniExists, "INI should be detected");
+        AssertTrue(!loaded.UnlockHiddenGameFgOption, "GpuNameOverride=0 should load as false");
+        AssertTrue(!loaded.UseLegacyRtx30Pacing, "Missing Rtx30FlipMetering should default to false (flip metering on)");
+
+        // Save recommended + legacy pacing
+        GameOptimizationSettings updated = new()
+        {
+            UnlockHiddenGameFgOption = true,
+            UseLegacyRtx30Pacing = true
+        };
+        OptimizationService.Save(gameDir, updated);
+
+        GameOptimizationSettings reloaded = OptimizationService.Load(gameDir);
+        AssertTrue(reloaded.UnlockHiddenGameFgOption, "GpuNameOverride=1 should reload as true");
+        AssertTrue(reloaded.UseLegacyRtx30Pacing, "Rtx30FlipMetering=0 should reload as legacy pacing true");
+
+        string rawText = File.ReadAllText(iniPath);
+        AssertTrue(rawText.Contains("ShowOverlay=1", StringComparison.Ordinal), "Unrelated [Menu] section must be preserved");
+        AssertTrue(rawText.Contains("OtherKey=keep", StringComparison.Ordinal), "Unrelated [Compatibility] key must be preserved");
+        AssertTrue(rawText.Contains("GpuNameOverride=1", StringComparison.Ordinal), "GpuNameOverride=1 must be written");
+        AssertTrue(rawText.Contains("Rtx30FlipMetering=0", StringComparison.Ordinal), "Rtx30FlipMetering=0 must be written");
     }
 }
