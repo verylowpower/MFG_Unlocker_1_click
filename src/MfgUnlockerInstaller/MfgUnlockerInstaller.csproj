@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MfgUnlockerInstaller</AssemblyName>
+    <RootNamespace>MfgUnlockerInstaller</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>FG Unlock 40</Authors>
+    <Description>1-Click MFG Unlocker Installer for Windows Games</Description>
+  </PropertyGroup>
+
+</Project>
